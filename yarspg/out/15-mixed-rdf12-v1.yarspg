@@ -1,0 +1,14 @@
+# Nodes
+(asserts {"IRI"}["referenceId": "asserts"])
+(bob {"IRI"}["referenceId": "bob"])
+(cheese {"IRI"}["referenceId": "cheese"])
+(claim {"Reifier"}["referenceId": "_:claim"])
+(moon {"IRI"}["referenceId": "moon"])
+(reifies {"IRI"}["referenceId": "rdf:reifies"])
+(report {"IRI"}["referenceId": "report"])
+
+# Edges
+(moon)-(e1 {"made_of"}["asserted": "false", "reifiedBy": "_:claim"])->(cheese)
+(asserts)-(e2 {"rdfs:subPropertyOf"}["asserted": "true"])->(reifies)
+(claim)-(e3 {"said_by"}["asserted": "true"])->(bob)
+(report)-(e4 {"mentions"}["asserted": "true"])->(claim)

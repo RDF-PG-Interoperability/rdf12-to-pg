@@ -1,0 +1,12 @@
+CREATE
+  (`Article`:`IRI` {`referenceId`: "Article"}),
+  (`alice`:`IRI` {`referenceId`: "alice"}),
+  (`bob`:`IRI` {`referenceId`: "bob"}),
+  (`journal1`:`IRI` {`referenceId`: "journal1"}),
+  (`lit_1`:`Literal` {`datatype`: "xsd:string", `referenceId`: "lit_1", `value`: "Property Graph Serialization"}),
+  (`paper1`:`IRI` {`referenceId`: "paper1"}),
+  (`paper1`)-[`e1`:`rdf:type`]->(`Article`),
+  (`paper1`)-[`e2`:`title`]->(`lit_1`),
+  (`paper1`)-[`e3`:`author`]->(`alice`),
+  (`paper1`)-[`e4`:`author`]->(`bob`),
+  (`paper1`)-[`e5`:`publishedIn`]->(`journal1`);

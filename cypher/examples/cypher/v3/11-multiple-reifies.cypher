@@ -1,0 +1,13 @@
+CREATE
+  (`cheese`:`IRI` {`referenceId`: "cheese"}),
+  (`claim1`:`BNode` {`referenceId`: "_:claim1"}),
+  (`claim2`:`BNode` {`referenceId`: "_:claim2"}),
+  (`moon`:`IRI` {`referenceId`: "moon"}),
+  (`source1`:`IRI` {`referenceId`: "source1"}),
+  (`source2`:`IRI` {`referenceId`: "source2"}),
+  (`tt_1`:`TripleTerm` {`referenceId`: "tt_1"}),
+  (`claim1`)-[`e1`:`generatedBy`]->(`source1`),
+  (`claim2`)-[`e2`:`generatedBy`]->(`source2`),
+  (`claim1`)-[`e3`:`rdf:reifies`]->(`tt_1`),
+  (`moon`)-[`e4`:`made_of` {`in`: "tt_1"}]->(`cheese`),
+  (`claim2`)-[`e5`:`rdf:reifies`]->(`tt_1`);

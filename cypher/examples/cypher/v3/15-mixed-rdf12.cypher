@@ -1,0 +1,15 @@
+CREATE
+  (`asserts`:`IRI` {`referenceId`: "asserts"}),
+  (`bob`:`IRI` {`referenceId`: "bob"}),
+  (`cheese`:`IRI` {`referenceId`: "cheese"}),
+  (`claim`:`BNode` {`referenceId`: "_:claim"}),
+  (`moon`:`IRI` {`referenceId`: "moon"}),
+  (`reifies`:`IRI` {`referenceId`: "rdf:reifies"}),
+  (`report`:`IRI` {`referenceId`: "report"}),
+  (`tt_1`:`TripleTerm` {`referenceId`: "tt_1"}),
+  (`asserts`)-[`e1`:`rdfs:subPropertyOf`]->(`reifies`),
+  (`claim`)-[`e2`:`said_by`]->(`bob`),
+  (`claim`)-[`e3`:`asserts`]->(`tt_1`),
+  (`moon`)-[`e4`:`made_of` {`in`: "tt_1"}]->(`cheese`),
+  (`claim`)-[`e5`:`rdf:reifies`]->(`tt_1`),
+  (`report`)-[`e6`:`mentions`]->(`claim`);

@@ -1,0 +1,6 @@
+size,count,path,bytes,lines,triples
+0.5mb,200,experiments/data/synthetic-0.5mb.ttl,463802,10835,13400
+1mb,400,experiments/data/synthetic-1mb.ttl,937299,21635,26800
+1.5mb,600,experiments/data/synthetic-1.5mb.ttl,1410801,32435,40200
+2mb,800,experiments/data/synthetic-2mb.ttl,1884380,43235,53600
+2.5mb,1000,experiments/data/synthetic-2.5mb.ttl,2358092,54035,67000

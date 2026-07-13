@@ -1,0 +1,17 @@
+# Nodes
+(alice {"IRI"}["referenceId": "alice"])
+(bob {"IRI"}["referenceId": "bob"])
+(genid0 {"Reifier"}["referenceId": "_:genid0"])
+(genid1 {"Reifier"}["referenceId": "_:genid1"])
+(lit_1 {"Literal"}["datatype": "xsd:decimal", "referenceId": "lit_1", "value": "0.9"])
+(pasta {"IRI"}["referenceId": "pasta"])
+(pizza {"IRI"}["referenceId": "pizza"])
+(survey1 {"IRI"}["referenceId": "survey1"])
+(survey2 {"IRI"}["referenceId": "survey2"])
+
+# Edges
+(bob)-(e1 {"likes"}["asserted": "true", "reifiedBy": "_:genid0"])->(pizza)
+(alice)-(e2 {"likes"}["asserted": "true", "reifiedBy": "_:genid1"])->(pasta)
+(genid0)-(e3 {"certainty"}["asserted": "true"])->(lit_1)
+(genid0)-(e4 {"source"}["asserted": "true"])->(survey1)
+(genid1)-(e5 {"source"}["asserted": "true"])->(survey2)

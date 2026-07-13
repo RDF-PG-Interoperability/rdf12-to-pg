@@ -1,0 +1,5 @@
+CREATE
+  (`cheese`:`IRI` {`referenceId`: "cheese"}),
+  (`lit_1`:`Literal` {`datatype`: "xsd:decimal", `referenceId`: "lit_1", `value`: "0.8"}),
+  (`moon`:`IRI` {`referenceId`: "moon"}),
+  (`moon`)-[`e1`:`made_of` {`asserted`: false, `referenceProperty`: "confidence", `references`: "lit_1"}]->(`cheese`);

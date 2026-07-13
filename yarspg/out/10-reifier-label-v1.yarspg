@@ -1,0 +1,11 @@
+# Nodes
+(cheese {"IRI"}["referenceId": "cheese"])
+(label {"Reifier"}["referenceId": "label"])
+(lit_1 {"Literal"}["datatype": "xsd:decimal", "referenceId": "lit_1", "value": "0.8"])
+(moon {"IRI"}["referenceId": "moon"])
+(x {"IRI"}["referenceId": "x"])
+
+# Edges
+(moon)-(e1 {"made_of"}["asserted": "false", "reifiedBy": "label"])->(cheese)
+(x)-(e2 {"y"}["asserted": "true"])->(label)
+(label)-(e3 {"confidence"}["asserted": "true"])->(lit_1)

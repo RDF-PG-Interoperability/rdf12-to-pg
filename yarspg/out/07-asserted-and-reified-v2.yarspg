@@ -1,0 +1,6 @@
+# Nodes
+(cheese {"IRI"}["referenceId": "cheese"])
+(moon {"IRI"}["referenceId": "moon"])
+
+# Edges
+(moon)-(e1 {"made_of"}["asserted": "true"])->(cheese)

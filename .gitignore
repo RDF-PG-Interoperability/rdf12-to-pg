@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+.venv/
+venv/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*~
+
+# Downloaded tools and runtime state
+/experiments/tools/
+
+# Full third-party source data (download instructions are versioned)
+/experiments/starbench/source/*
+!/experiments/starbench/source/README.md
+
+# Regenerable converter output and temporary files
+/experiments/results/cypher/
+/experiments/results/tmp/
+/experiments/starbench/results/cypher/
+/experiments/starbench/results/tmp/
+/experiments/results/neo4j-console.log
+
+# Local documents
+*.aux
+*.log
+*.out
+*.pdf

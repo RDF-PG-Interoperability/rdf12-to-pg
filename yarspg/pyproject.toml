@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rdf12-to-yarspg"
+version = "0.1.0"
+description = "Standalone RDF 1.2 Turtle to YARS-PG converter"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "Dominik Tomaszuk" }
+]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/domel/rdf12-to-pg"
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.15.0"
+]
+
+[project.scripts]
+rdf12-to-yarspg = "rdf12_to_yarspg_lib.converter:main"
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.setuptools]
+py-modules = ["rdf12_to_yarspg", "turtle_to_yarspg"]
+
+[tool.setuptools.packages.find]
+include = ["rdf12_to_yarspg_lib*"]

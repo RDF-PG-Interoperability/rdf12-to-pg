@@ -1,0 +1,32 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install development tools
+        run: python -m pip install ruff
+      - name: Lint
+        run: ruff check cypher yarspg synthetic-generator experiments
+      - name: Test Cypher converter
+        working-directory: cypher
+        run: python -m unittest discover -s tests
+      - name: Test YARS-PG converter
+        working-directory: yarspg
+        run: python -m unittest discover -s tests
+      - name: Test synthetic generator and integrations
+        working-directory: synthetic-generator
+        run: python -m unittest discover -s tests
+      - name: Validate published result artifacts
+        run: python experiments/validate_results.py

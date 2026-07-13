@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+"""Executable wrapper for the synthetic RDF 1.2 generator."""
+
+from synthetic_gen_lib.generator import main
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

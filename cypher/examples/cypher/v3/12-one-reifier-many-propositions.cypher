@@ -1,0 +1,14 @@
+CREATE
+  (`bob`:`IRI` {`referenceId`: "bob"}),
+  (`cheese`:`IRI` {`referenceId`: "cheese"}),
+  (`claimSet`:`BNode` {`referenceId`: "_:claimSet"}),
+  (`moon`:`IRI` {`referenceId`: "moon"}),
+  (`popcorn`:`IRI` {`referenceId`: "popcorn"}),
+  (`sun`:`IRI` {`referenceId`: "sun"}),
+  (`tt_1`:`TripleTerm` {`referenceId`: "tt_1"}),
+  (`tt_2`:`TripleTerm` {`referenceId`: "tt_2"}),
+  (`bob`)-[`e1`:`says`]->(`claimSet`),
+  (`claimSet`)-[`e2`:`rdf:reifies`]->(`tt_1`),
+  (`moon`)-[`e3`:`made_of` {`in`: "tt_1"}]->(`cheese`),
+  (`claimSet`)-[`e4`:`rdf:reifies`]->(`tt_2`),
+  (`sun`)-[`e5`:`made_of` {`in`: "tt_2"}]->(`popcorn`);

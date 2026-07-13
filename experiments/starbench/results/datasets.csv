@@ -1,0 +1,6 @@
+size,count,path,bytes,lines,triples
+0.5mb,154,experiments/starbench/data/starbench-0.5mb.ttl,499932,316,8989
+1mb,134,experiments/starbench/data/starbench-1mb.ttl,999917,276,18688
+1.5mb,159,experiments/starbench/data/starbench-1.5mb.ttl,1499694,326,28201
+2mb,211,experiments/starbench/data/starbench-2mb.ttl,1999851,430,37613
+2.5mb,286,experiments/starbench/data/starbench-2.5mb.ttl,2499756,580,46925
