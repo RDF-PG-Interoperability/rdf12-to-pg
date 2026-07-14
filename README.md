@@ -28,8 +28,11 @@ evaluation artifact:
 | CLI value | Translation | Summary |
 | --- | --- | --- |
 | `1` | Maxime | Interprets `rdf:reifies` and represents reifiers explicitly |
-| `2` | Katja | Folds reifier annotations; fixed folding is the default |
+| `2` | Katja | Folds reifier annotations; supports fixed (default) and open folding |
 | `3` | Ruben | Explicitly materializes triple terms and retains every parsed RDF triple |
+
+Fixed and open folding are separate variant 2 configurations. The experiment
+harness measures both forms independently.
 
 ## Quick start
 

@@ -99,6 +99,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runs", type=positive_int, default=10)
     parser.add_argument("--batch-size", type=positive_int, default=1000)
     parser.add_argument("--timeout", type=positive_int, default=3600)
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Keep existing measurements and run only missing configurations.",
+    )
     return parser
 
 
@@ -112,12 +117,15 @@ def main(argv: list[str] | None = None) -> int:
             runs=args.runs,
             batch_size=args.batch_size,
             timeout=args.timeout,
+            resume=args.resume,
         )
-    conversion = harness.read_csv(RESULTS_DIR / "conversion_raw.csv")
+    conversion = harness.normalize_conversion_rows(
+        harness.read_csv(RESULTS_DIR / "conversion_raw.csv")
+    )
     harness.write_stats_csv(
         RESULTS_DIR / "conversion_summary.csv",
         conversion,
-        ("size", "tool", "mode", "variant"),
+        ("size", "tool", "mode", "variant", "folding"),
         ("time_s", "peak_kb", "output_bytes"),
     )
     return 0

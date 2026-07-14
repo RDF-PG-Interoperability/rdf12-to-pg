@@ -70,12 +70,22 @@ class ConversionConfig:
     tool: str
     mode: str
     variant: int
+    folding: str = ""
+
+
+def folding_forms(variant: int) -> tuple[str, ...]:
+    return ("fixed", "open") if variant == 2 else ("",)
 
 
 CONVERSION_CONFIGS: tuple[ConversionConfig, ...] = tuple(
-    [ConversionConfig("yarspg", "normal", variant) for variant in (1, 2, 3)]
-    + [ConversionConfig("cypher", "normal", variant) for variant in (1, 2, 3)]
-    + [ConversionConfig("cypher", "large-file", variant) for variant in (1, 2, 3)]
+    ConversionConfig(tool, mode, variant, folding)
+    for tool, mode in (
+        ("yarspg", "normal"),
+        ("cypher", "normal"),
+        ("cypher", "large-file"),
+    )
+    for variant in (1, 2, 3)
+    for folding in folding_forms(variant)
 )
 
 
@@ -110,14 +120,30 @@ def main(argv: list[str] | None = None) -> int:
         default=3600,
         help="Per-process timeout in seconds.",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Keep existing measurements and run only missing configurations.",
+    )
     args = parser.parse_args(argv)
 
     ensure_dirs()
     datasets = prepare_datasets(args.sizes) if args.phase != "summarize" else []
     if args.phase in {"all", "convert"}:
-        run_conversion_experiments(datasets, args.runs, args.batch_size, args.timeout)
+        run_conversion_experiments(
+            datasets,
+            args.runs,
+            args.batch_size,
+            args.timeout,
+            resume=args.resume,
+        )
     if args.phase in {"all", "neo4j"}:
-        run_neo4j_experiments(datasets, args.batch_size, args.timeout)
+        run_neo4j_experiments(
+            datasets,
+            args.batch_size,
+            args.timeout,
+            resume=args.resume,
+        )
     if args.phase in {"all", "convert", "neo4j", "summarize"}:
         write_summary_files()
     return 0
@@ -191,6 +217,8 @@ def run_conversion_experiments(
     runs: int,
     batch_size: int,
     timeout: int,
+    *,
+    resume: bool = False,
 ) -> None:
     raw_path = RESULTS_DIR / "conversion_raw.csv"
     fieldnames = (
@@ -203,6 +231,7 @@ def run_conversion_experiments(
         "tool",
         "mode",
         "variant",
+        "folding",
         "run",
         "exit_code",
         "time_s",
@@ -211,18 +240,43 @@ def run_conversion_experiments(
         "batch_size",
         "stderr",
     )
+    existing_rows = normalize_conversion_rows(read_csv(raw_path)) if resume else []
+    completed = {
+        (
+            row["size"],
+            row["tool"],
+            row["mode"],
+            row["variant"],
+            row["folding"],
+            int(row["run"]),
+        )
+        for row in existing_rows
+    }
     with raw_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames, lineterminator="\n")
         writer.writeheader()
+        for row in existing_rows:
+            writer.writerow({field: row.get(field, "") for field in fieldnames})
         for dataset in datasets:
             for config in CONVERSION_CONFIGS:
                 for run_index in range(1, runs + 1):
+                    key = (
+                        dataset.label,
+                        config.tool,
+                        config.mode,
+                        str(config.variant),
+                        config.folding,
+                        run_index,
+                    )
+                    if key in completed:
+                        continue
                     print(
                         "conversion",
                         dataset.label,
                         config.tool,
                         config.mode,
                         f"v{config.variant}",
+                        config.folding or "n/a",
                         f"run={run_index}/{runs}",
                         file=sys.stderr,
                         flush=True,
@@ -245,6 +299,20 @@ def run_conversion_experiments(
                         break
 
 
+def normalize_conversion_rows(
+    rows: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    normalized = []
+    for row in rows:
+        current = dict(row)
+        if not current.get("folding") and current.get("variant") == "2":
+            current["folding"] = "fixed"
+        else:
+            current.setdefault("folding", "")
+        normalized.append(current)
+    return normalized
+
+
 def run_one_conversion(
     dataset: Dataset,
     config: ConversionConfig,
@@ -254,7 +322,10 @@ def run_one_conversion(
 ) -> dict[str, object]:
     output = representative_cypher_path(dataset, config)
     if config.tool == "yarspg":
-        output = TMP_DIR / f"{dataset.label}-{config.tool}-{config.mode}-v{config.variant}.yarspg"
+        output = TMP_DIR / (
+            f"{dataset.label}-{config.tool}-{config.mode}-"
+            f"{config_slug(config)}.yarspg"
+        )
     output.parent.mkdir(parents=True, exist_ok=True)
     if output.exists():
         output.unlink()
@@ -280,6 +351,7 @@ def run_one_conversion(
         "tool": config.tool,
         "mode": config.mode,
         "variant": config.variant,
+        "folding": config.folding,
         "run": run_index,
         "exit_code": result["exit_code"],
         "time_s": result["time_s"],
@@ -307,6 +379,7 @@ def skipped_conversion_row(
         "tool": config.tool,
         "mode": config.mode,
         "variant": config.variant,
+        "folding": config.folding,
         "run": run_index,
         "exit_code": 125,
         "time_s": "",
@@ -327,19 +400,22 @@ def command_for_conversion(
     batch_size: int,
 ) -> list[str]:
     if config.tool == "yarspg":
-        return [
+        cmd = [
             str(ROOT / "yarspg" / "rdf12_to_yarspg"),
             "--variant",
             str(config.variant),
-            str(input_path),
-            "-o",
-            str(output_path),
         ]
+        if config.folding:
+            cmd.extend(["--folding", config.folding])
+        cmd.extend([str(input_path), "-o", str(output_path)])
+        return cmd
     cmd = [
         str(ROOT / "cypher" / "rdf12_to_neo4j"),
         "--variant",
         str(config.variant),
     ]
+    if config.folding:
+        cmd.extend(["--folding", config.folding])
     if config.mode == "large-file":
         cmd.extend(["--large-file", "--batch-size", str(batch_size)])
     cmd.extend([str(input_path), "-o", str(output_path)])
@@ -350,6 +426,8 @@ def run_neo4j_experiments(
     datasets: list[Dataset],
     batch_size: int,
     timeout: int,
+    *,
+    resume: bool = False,
 ) -> None:
     neo4j_home = ensure_neo4j()
     process = start_neo4j(neo4j_home)
@@ -365,6 +443,7 @@ def run_neo4j_experiments(
             "input_triples",
             "mode",
             "variant",
+            "folding",
             "run",
             "exit_code",
             "time_s",
@@ -375,6 +454,18 @@ def run_neo4j_experiments(
             "relationships",
             "stderr",
         )
+        existing_rows = normalize_neo4j_rows(read_csv(raw_path)) if resume else []
+        completed = {
+            (
+                row["size"],
+                row["mode"],
+                row["variant"],
+                row["folding"],
+                int(row["run"]),
+            )
+            for row in existing_rows
+            if int(row["run"])
+        }
         with raw_path.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.DictWriter(
                 handle,
@@ -382,68 +473,106 @@ def run_neo4j_experiments(
                 lineterminator="\n",
             )
             writer.writeheader()
+            for row in existing_rows:
+                writer.writerow({field: row.get(field, "") for field in fieldnames})
             for dataset in datasets:
                 for variant in (1, 2, 3):
-                    for mode in ("normal", "large-file"):
-                        if mode == "normal" and (variant != 1 or dataset.label != "0.5mb"):
-                            continue
-                        config = ConversionConfig("cypher", mode, variant)
-                        cypher_path = representative_cypher_path(dataset, config)
-                        row = run_one_conversion(
-                            dataset,
-                            config,
-                            0,
-                            batch_size,
-                            timeout,
-                        )
-                        if int(row["exit_code"]) != 0:
-                            writer.writerow(neo4j_failure_row(dataset, mode, variant, row))
-                            continue
-                        # Normal output is one monolithic CREATE statement;
-                        # keep one baseline load while fully repeating the
-                        # scalable large-file path.
-                        mode_runs = 1 if mode == "normal" else NEO4J_BATCHED_RUNS
-                        for run_index in range(1, mode_runs + 1):
-                            print(
-                                "neo4j-load",
-                                dataset.label,
-                                mode,
-                                f"v{variant}",
-                                f"run={run_index}/{mode_runs}",
-                                file=sys.stderr,
-                                flush=True,
+                    for folding in folding_forms(variant):
+                        for mode in ("normal", "large-file"):
+                            if mode == "normal" and (
+                                variant != 1 or dataset.label != "0.5mb"
+                            ):
+                                continue
+                            config = ConversionConfig(
+                                "cypher", mode, variant, folding
                             )
-                            clear_neo4j(neo4j_home)
-                            row = run_one_neo4j_load(
-                                neo4j_home,
+                            mode_runs = (
+                                1 if mode == "normal" else NEO4J_BATCHED_RUNS
+                            )
+                            missing_runs = [
+                                run_index
+                                for run_index in range(1, mode_runs + 1)
+                                if (
+                                    dataset.label,
+                                    mode,
+                                    str(variant),
+                                    folding,
+                                    run_index,
+                                )
+                                not in completed
+                            ]
+                            if not missing_runs:
+                                continue
+                            cypher_path = representative_cypher_path(dataset, config)
+                            row = run_one_conversion(
                                 dataset,
-                                cypher_path,
-                                mode,
-                                variant,
-                                run_index,
+                                config,
+                                0,
                                 batch_size,
                                 timeout,
                             )
-                            writer.writerow(row)
-                            handle.flush()
                             if int(row["exit_code"]) != 0:
-                                for skipped_index in range(run_index + 1, mode_runs + 1):
-                                    writer.writerow(
-                                        skipped_neo4j_row(
-                                            dataset,
-                                            mode,
-                                            variant,
-                                            skipped_index,
-                                            batch_size,
-                                            cypher_path,
-                                            row,
-                                        )
-                                    )
+                                writer.writerow(
+                                    neo4j_failure_row(dataset, config, row)
+                                )
+                                continue
+                            # Normal output is one monolithic CREATE statement;
+                            # keep one baseline load while fully repeating the
+                            # scalable large-file path.
+                            for run_index in missing_runs:
+                                print(
+                                    "neo4j-load",
+                                    dataset.label,
+                                    mode,
+                                    f"v{variant}",
+                                    folding or "n/a",
+                                    f"run={run_index}/{mode_runs}",
+                                    file=sys.stderr,
+                                    flush=True,
+                                )
+                                clear_neo4j(neo4j_home)
+                                row = run_one_neo4j_load(
+                                    neo4j_home,
+                                    dataset,
+                                    cypher_path,
+                                    config,
+                                    run_index,
+                                    batch_size,
+                                    timeout,
+                                )
+                                writer.writerow(row)
                                 handle.flush()
-                                process = restart_neo4j(neo4j_home, process)
-                                break
+                                if int(row["exit_code"]) != 0:
+                                    for skipped_index in missing_runs:
+                                        if skipped_index <= run_index:
+                                            continue
+                                        writer.writerow(
+                                            skipped_neo4j_row(
+                                                dataset,
+                                                config,
+                                                skipped_index,
+                                                batch_size,
+                                                cypher_path,
+                                                row,
+                                            )
+                                        )
+                                    handle.flush()
+                                    process = restart_neo4j(neo4j_home, process)
+                                    break
     finally:
         stop_neo4j(neo4j_home, process)
+
+
+def normalize_neo4j_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    normalized = []
+    for row in rows:
+        current = dict(row)
+        if not current.get("folding") and current.get("variant") == "2":
+            current["folding"] = "fixed"
+        else:
+            current.setdefault("folding", "")
+        normalized.append(current)
+    return normalized
 
 
 def ensure_neo4j() -> Path:
@@ -553,8 +682,7 @@ def run_one_neo4j_load(
     neo4j_home: Path,
     dataset: Dataset,
     cypher_path: Path,
-    mode: str,
-    variant: int,
+    config: ConversionConfig,
     run_index: int,
     batch_size: int,
     timeout: int,
@@ -575,14 +703,15 @@ def run_one_neo4j_load(
         "count": dataset.count,
         "input_bytes": dataset.bytes,
         "input_triples": dataset.triples,
-        "mode": mode,
-        "variant": variant,
+        "mode": config.mode,
+        "variant": config.variant,
+        "folding": config.folding,
         "run": run_index,
         "exit_code": result["exit_code"],
         "time_s": result["time_s"],
         "peak_kb": result["peak_kb"],
         "cypher_bytes": cypher_path.stat().st_size,
-        "batch_size": batch_size if mode == "large-file" else "",
+        "batch_size": batch_size if config.mode == "large-file" else "",
         "nodes": nodes,
         "relationships": relationships,
         "stderr": result["stderr"],
@@ -591,8 +720,7 @@ def run_one_neo4j_load(
 
 def skipped_neo4j_row(
     dataset: Dataset,
-    mode: str,
-    variant: int,
+    config: ConversionConfig,
     run_index: int,
     batch_size: int,
     cypher_path: Path,
@@ -605,14 +733,15 @@ def skipped_neo4j_row(
         "count": dataset.count,
         "input_bytes": dataset.bytes,
         "input_triples": dataset.triples,
-        "mode": mode,
-        "variant": variant,
+        "mode": config.mode,
+        "variant": config.variant,
+        "folding": config.folding,
         "run": run_index,
         "exit_code": 125,
         "time_s": "",
         "peak_kb": "",
         "cypher_bytes": cypher_path.stat().st_size if cypher_path.exists() else "",
-        "batch_size": batch_size if mode == "large-file" else "",
+        "batch_size": batch_size if config.mode == "large-file" else "",
         "nodes": "",
         "relationships": "",
         "stderr": (
@@ -645,8 +774,7 @@ def count_neo4j(neo4j_home: Path) -> tuple[int, int]:
 
 def neo4j_failure_row(
     dataset: Dataset,
-    mode: str,
-    variant: int,
+    config: ConversionConfig,
     conversion_row: dict[str, object],
 ) -> dict[str, object]:
     return {
@@ -656,8 +784,9 @@ def neo4j_failure_row(
         "count": dataset.count,
         "input_bytes": dataset.bytes,
         "input_triples": dataset.triples,
-        "mode": mode,
-        "variant": variant,
+        "mode": config.mode,
+        "variant": config.variant,
+        "folding": config.folding,
         "run": 0,
         "exit_code": conversion_row["exit_code"],
         "time_s": "",
@@ -695,8 +824,13 @@ def representative_cypher_path(dataset: Dataset, config: ConversionConfig) -> Pa
     return (
         RESULTS_DIR
         / "cypher"
-        / f"{dataset.label}-{config.mode}-v{config.variant}.cypher"
+        / f"{dataset.label}-{config.mode}-{config_slug(config)}.cypher"
     )
+
+
+def config_slug(config: ConversionConfig) -> str:
+    suffix = f"-{config.folding}" if config.folding else ""
+    return f"v{config.variant}{suffix}"
 
 
 def run_timed(
@@ -760,18 +894,20 @@ def now_iso() -> str:
 
 
 def write_summary_files() -> None:
-    conversion = read_csv(RESULTS_DIR / "conversion_raw.csv")
-    neo4j = read_csv(RESULTS_DIR / "neo4j_load_raw.csv")
+    conversion = normalize_conversion_rows(
+        read_csv(RESULTS_DIR / "conversion_raw.csv")
+    )
+    neo4j = normalize_neo4j_rows(read_csv(RESULTS_DIR / "neo4j_load_raw.csv"))
     write_stats_csv(
         RESULTS_DIR / "conversion_summary.csv",
         conversion,
-        ("size", "tool", "mode", "variant"),
+        ("size", "tool", "mode", "variant", "folding"),
         ("time_s", "peak_kb", "output_bytes"),
     )
     write_stats_csv(
         RESULTS_DIR / "neo4j_load_summary.csv",
         neo4j,
-        ("size", "mode", "variant"),
+        ("size", "mode", "variant", "folding"),
         ("time_s", "peak_kb", "cypher_bytes", "nodes", "relationships"),
     )
 
