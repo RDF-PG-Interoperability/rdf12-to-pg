@@ -5,15 +5,20 @@ import re
 from collections import OrderedDict
 
 
+
+
 ##############################################################################
 # Configuration
 ##############################################################################
 
-INPUT_CSV = "conversion_summary.csv"
-OUTPUT_TEX = "barchart.tex"
-
+TARGET_DATA_COLUMN = "time_s_avg"
 Y_AXIS_MIN = 0
 Y_AXIS_MAX = 10
+Y_AXIS_TEXT = "Time (s)"
+HEIGHT = "4.5cm"
+
+INPUT_CSV = "conversion_summary_starbench.csv"
+OUTPUT_TEX = "barchart.tex"
 
 BAR_WIDTH = "6pt"
 
@@ -57,6 +62,8 @@ BAR_SHIFTS = [
 ##############################################################################
 # Utility functions
 ##############################################################################
+
+_TARGET_DATA = "tg"
 
 def numeric_size(size_string):
     """
@@ -116,7 +123,7 @@ with open(INPUT_CSV, newline="") as f:
 
         row["size_numeric"] = numeric_size(row["size"])
 
-        row["time"] = float(row["time_s_avg"])
+        row[_TARGET_DATA] = float(row[TARGET_DATA_COLUMN])
 
         records.append(row)
 
@@ -168,7 +175,7 @@ for r in records:
             f"Duplicated row in CSV: {key}"
         )
 
-    times[key] = r["time"]
+    times[key] = r[_TARGET_DATA]
 
 
 ##############################################################################
@@ -222,10 +229,10 @@ r"""
 ybar,
 bar width=%s,
 width=\textwidth,
-height=9cm,
+height=%s,
 ymin=%s,
 ymax=%s,
-ylabel={Time (s)},
+ylabel={%s},
 symbolic x coords={%s},
 xtick=data,
 enlarge x limits=0.08,
@@ -236,9 +243,11 @@ anchor=north,
 draw=none
 }]
 """ % (
-BAR_WIDTH,
-Y_AXIS_MIN,
-Y_AXIS_MAX,
+    BAR_WIDTH,
+    HEIGHT,
+    Y_AXIS_MIN,
+    Y_AXIS_MAX,
+    Y_AXIS_TEXT,
 ",".join(size_labels)
 )
 )
