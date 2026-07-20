@@ -57,9 +57,9 @@ For each workload, the harness measures:
 - ten runs per configuration;
 - a 3,600-second per-process timeout;
 - batch size 1,000 for batched Cypher;
-- fixed folding for variant 2.
+- fixed and open folding, measured separately for variant 2.
 
-This yields 450 conversion rows per workload.
+This yields 600 conversion rows per workload.
 
 ### Neo4j loading measurements
 
@@ -72,7 +72,8 @@ Neo4j loading is evaluated only for the synthetic inputs. The harness:
 - disables authentication;
 - configures an 8 GiB initial and maximum heap;
 - times `cypher-shell`, excluding Cypher generation and database clearing;
-- runs every batched size/variant configuration five times;
+- runs every batched size/configuration combination five times, with fixed and
+  open folding measured separately for variant 2;
 - runs one monolithic baseline: Maxime at 0.5 MB.
 
 The `peak_kb` field for these rows belongs to `cypher-shell`; it is not Neo4j
@@ -97,6 +98,24 @@ python3 experiments/validate_results.py
 It checks dataset paths and sizes, successful exit codes, configuration counts,
 repetition counts, stable serialized sizes, and agreement between raw and
 summary groups.
+
+## Generate LaTeX charts
+
+The chart generator treats fixed and open folding as separate series. A full
+fixed/open summary CSV contains 60 rows. Generate standalone LaTeX sources and,
+when `pdflatex` is installed, PDF charts with:
+
+```bash
+python3 experiments/generate_latex_chart_from_csv_data.py \
+  experiments/results/conversion_summary.csv \
+  --output-dir experiments/charts/synthetic \
+  --title "Synthetic workload" \
+  --compile
+```
+
+By default it creates charts for conversion time, peak RSS, and output size.
+The generator requires the complete fixed/open matrix and reports missing
+combinations instead of silently merging folding forms.
 
 ## Reproduce the synthetic workload
 

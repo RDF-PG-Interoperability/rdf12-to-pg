@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the shape and internal consistency of checked-in result CSVs."""
+"""Validate fixed/open result CSVs."""
 
 from __future__ import annotations
 
@@ -12,6 +12,19 @@ from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 SIZES = {"0.5mb", "1mb", "1.5mb", "2mb", "2.5mb"}
+OPEN_CONVERSION_FORMS = {
+    (tool, mode, str(variant), folding)
+    for tool, mode in (
+        ("yarspg", "normal"),
+        ("cypher", "normal"),
+        ("cypher", "large-file"),
+    )
+    for variant, folding in ((1, ""), (2, "fixed"), (2, "open"), (3, ""))
+}
+OPEN_NEO4J_BATCHED_FORMS = {
+    ("large-file", str(variant), folding)
+    for variant, folding in ((1, ""), (2, "fixed"), (2, "open"), (3, ""))
+}
 
 
 class ValidationError(RuntimeError):
@@ -24,9 +37,24 @@ def require(condition: bool, message: str) -> None:
 
 
 def read_rows(path: Path) -> list[dict[str, str]]:
-    require(path.is_file(), f"missing CSV: {path.relative_to(ROOT)}")
+    try:
+        display_path = path.relative_to(ROOT)
+    except ValueError:
+        display_path = path
+    require(path.is_file(), f"missing CSV: {display_path}")
     with path.open(newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
+
+
+def normalize_folding(rows: Iterable[dict[str, str]]) -> list[dict[str, str]]:
+    """Normalize the folding field before validating the complete matrix."""
+    normalized = []
+    for row in rows:
+        current = dict(row)
+        require("folding" in current, "result CSV is missing the folding column")
+        current["folding"] = current["folding"].strip().lower()
+        normalized.append(current)
+    return normalized
 
 
 def grouped(
@@ -51,62 +79,60 @@ def validate_datasets(results_dir: Path) -> None:
 
 
 def validate_conversion(results_dir: Path, label: str) -> None:
-    raw = read_rows(results_dir / "conversion_raw.csv")
-    require(len(raw) == 450, f"{label}: expected 450 raw conversion rows")
+    raw = normalize_folding(read_rows(results_dir / "conversion_raw.csv"))
     require(all(row["exit_code"] == "0" for row in raw), f"{label}: failed run")
-
-    dimensions = ("size", "tool", "mode", "variant")
+    dimensions = ("size", "tool", "mode", "variant", "folding")
     groups = grouped(raw, dimensions)
-    require(len(groups) == 45, f"{label}: expected 45 conversion groups")
+    actual_forms = {(key[1], key[2], key[3], key[4]) for key in groups}
+    require(actual_forms == OPEN_CONVERSION_FORMS, f"{label}: incomplete fixed/open matrix")
+    expected_groups = len(SIZES) * len(OPEN_CONVERSION_FORMS)
+    expected_rows = expected_groups * 10
+    require(len(raw) == expected_rows, f"{label}: expected {expected_rows} raw rows")
+    require(len(groups) == expected_groups, f"{label}: expected {expected_groups} groups")
     for key, rows in groups.items():
         runs = sorted(int(row["run"]) for row in rows)
         require(runs == list(range(1, 11)), f"{label}: wrong repetitions for {key}")
-        output_sizes = {row["output_bytes"] for row in rows}
-        require(len(output_sizes) == 1, f"{label}: varying output size for {key}")
+        require(
+            len({row["output_bytes"] for row in rows}) == 1,
+            f"{label}: varying output size for {key}",
+        )
 
-    summary = read_rows(results_dir / "conversion_summary.csv")
-    require(len(summary) == 45, f"{label}: expected 45 summary rows")
+    summary = normalize_folding(read_rows(results_dir / "conversion_summary.csv"))
+    require(len(summary) == expected_groups, f"{label}: expected {expected_groups} summaries")
     summary_groups = grouped(summary, dimensions)
     require(set(summary_groups) == set(groups), f"{label}: summary groups differ")
-    require(
-        all(row["runs"] == "10" for row in summary),
-        f"{label}: summary run count differs from ten",
-    )
-    print(f"{label}: 450 conversion runs in 45 groups validated")
+    require(all(row["runs"] == "10" for row in summary), f"{label}: wrong summary runs")
+    print(f"{label}: {expected_rows} runs in {expected_groups} fixed/open groups validated")
 
 
 def validate_neo4j(results_dir: Path) -> None:
-    raw = read_rows(results_dir / "neo4j_load_raw.csv")
-    require(len(raw) == 76, "Neo4j: expected 76 raw loading rows")
+    raw = normalize_folding(read_rows(results_dir / "neo4j_load_raw.csv"))
     require(all(row["exit_code"] == "0" for row in raw), "Neo4j: failed load")
-
-    dimensions = ("size", "mode", "variant")
+    dimensions = ("size", "mode", "variant", "folding")
     groups = grouped(raw, dimensions)
-    require(len(groups) == 16, "Neo4j: expected 16 configuration groups")
-    normal_key = ("0.5mb", "normal", "1")
-    require(set(groups) - {normal_key}, "Neo4j: batched groups are missing")
-    require(len(groups[normal_key]) == 1, "Neo4j: baseline must have one run")
+    normal_key = ("0.5mb", "normal", "1", "")
+    batched = {key for key in groups if key[1] == "large-file"}
+    actual_forms = {(key[1], key[2], key[3]) for key in batched}
+    require(actual_forms == OPEN_NEO4J_BATCHED_FORMS, "Neo4j: incomplete fixed/open matrix")
+    expected_keys = {normal_key} | {
+        (size, mode, variant, folding)
+        for size in SIZES
+        for mode, variant, folding in actual_forms
+    }
+    require(set(groups) == expected_keys, "Neo4j: loading groups differ")
+    expected_groups = len(expected_keys)
+    expected_rows = (expected_groups - 1) * 5 + 1
+    require(len(raw) == expected_rows, f"Neo4j: expected {expected_rows} rows")
     for key, rows in groups.items():
         expected = 1 if key == normal_key else 5
         require(len(rows) == expected, f"Neo4j: wrong repetitions for {key}")
         for field in ("cypher_bytes", "nodes", "relationships"):
-            require(
-                len({row[field] for row in rows}) == 1,
-                f"Neo4j: varying {field} for {key}",
-            )
+            require(len({row[field] for row in rows}) == 1, f"Neo4j: varying {field} for {key}")
 
-    batched = {key for key in groups if key[1] == "large-file"}
-    require(len(batched) == 15, "Neo4j: expected 15 batched groups")
-    require(
-        all(len(groups[key]) == 5 for key in batched),
-        "Neo4j: every batched group must contain five runs",
-    )
-
-    summary = read_rows(results_dir / "neo4j_load_summary.csv")
-    require(len(summary) == 16, "Neo4j: expected 16 summary rows")
-    summary_groups = grouped(summary, dimensions)
-    require(set(summary_groups) == set(groups), "Neo4j: summary groups differ")
-    print("Neo4j: 75 batched loads and one monolithic baseline validated")
+    summary = normalize_folding(read_rows(results_dir / "neo4j_load_summary.csv"))
+    require(len(summary) == expected_groups, f"Neo4j: expected {expected_groups} summaries")
+    require(set(grouped(summary, dimensions)) == set(groups), "Neo4j: summary groups differ")
+    print(f"Neo4j: {expected_rows - 1} fixed/open batched loads plus baseline validated")
 
 
 def main() -> int:
