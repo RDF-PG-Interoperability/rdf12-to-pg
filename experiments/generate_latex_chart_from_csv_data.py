@@ -16,46 +16,60 @@ Y_AXIS_MIN = 0
 Y_AXIS_MAX = 10
 Y_AXIS_TEXT = "Time (s)"
 HEIGHT = "4.5cm"
+ENLARGE_SEP_VALUE = 0.065
 
-INPUT_CSV = "conversion_summary_starbench.csv"
+INPUT_CSV = "conversion_summary.csv"
 OUTPUT_TEX = "barchart.tex"
 
-BAR_WIDTH = "6pt"
+BAR_WIDTH = "5pt"
 
 COLORS = {
-    1: "green",
-    2: "red",
-    3: "blue"
+    ("variant1", "fixed"): "green",
+    ("variant2", "fixed"): "red",
+    ("variant2", "open"): "orange",
+    ("variant3", "fixed"): "blue",
 }
+
 
 # Orden EXACTO que has solicitado
 BAR_ORDER = [
 
-    ("yarspg", "normal",     1),
-    ("cypher", "normal",     1),
-    ("cypher", "large-file", 1),
+    # Variant 1
+    ("variant1", 1, "fixed", "yarspg", "normal"),
+    ("variant1", 1, "fixed", "cypher", "normal"),
+    ("variant1", 1, "fixed", "cypher", "large-file"),
 
-    ("yarspg", "normal",     2),
-    ("cypher", "normal",     2),
-    ("cypher", "large-file", 2),
+    # Variant 2 - fixed folding
+    ("variant2", 2, "fixed", "yarspg", "normal"),
+    ("variant2", 2, "fixed", "cypher", "normal"),
+    ("variant2", 2, "fixed", "cypher", "large-file"),
 
-    ("yarspg", "normal",     3),
-    ("cypher", "normal",     3),
-    ("cypher", "large-file", 3)
+    # Variant 2 - open folding
+    ("variant2", 2, "open", "yarspg", "normal"),
+    ("variant2", 2, "open", "cypher", "normal"),
+    ("variant2", 2, "open", "cypher", "large-file"),
+
+    # Variant 3
+    ("variant3", 3, "fixed", "yarspg", "normal"),
+    ("variant3", 3, "fixed", "cypher", "normal"),
+    ("variant3", 3, "fixed", "cypher", "large-file"),
 
 ]
 
 # Desplazamiento horizontal de las nueve barras
 BAR_SHIFTS = [
-    "-24pt",
-    "-18pt",
-    "-12pt",
-    "-6pt",
-    "0pt",
-    "6pt",
-    "12pt",
-    "18pt",
-    "24pt"
+    "-27.5pt",
+    "-22.5pt",
+    "-17.5pt",
+    "-12.5pt",
+    "-7.5pt",
+    "-2.5pt",
+    "2.5pt",
+    "7.5pt",
+    "12.5pt",
+    "17.5pt",
+    "22.5pt",
+    "27.5pt",
 ]
 
 
@@ -118,6 +132,7 @@ with open(INPUT_CSV, newline="") as f:
 
         row["tool"] = row["tool"].strip().lower()
         row["mode"] = row["mode"].strip().lower()
+        row["folding"] = row["folding"].strip().lower()
 
         row["variant"] = int(row["variant"])
 
@@ -167,7 +182,8 @@ for r in records:
         r["size_numeric"],
         r["tool"],
         r["mode"],
-        r["variant"]
+        r["variant"],
+        r["folding"]
     )
 
     if key in times:
@@ -186,13 +202,14 @@ missing = []
 
 for size in sizes:
 
-    for tool, mode, variant in BAR_ORDER:
+    for _, variant, folding, tool, mode in BAR_ORDER:
 
         key = (
             size,
             tool,
             mode,
-            variant
+            variant,
+            folding,
         )
 
         if key not in times:
@@ -207,7 +224,7 @@ if missing:
         print(m)
 
     raise RuntimeError(
-        "CSV does not contain the expected 45 rows."
+        "CSV does not contain all the expected combinations."
     )
 
 print("CSV successfully loaded.")
@@ -235,7 +252,7 @@ ymax=%s,
 ylabel={%s},
 symbolic x coords={%s},
 xtick=data,
-enlarge x limits=0.08,
+enlarge x limits=%s,
 legend columns=3,
 legend style={
 at={(0.5,-0.23)},
@@ -248,7 +265,8 @@ draw=none
     Y_AXIS_MIN,
     Y_AXIS_MAX,
     Y_AXIS_TEXT,
-",".join(size_labels)
+",".join(size_labels),
+    ENLARGE_SEP_VALUE
 )
 )
 
@@ -260,16 +278,33 @@ draw=none
 # Generate the nine series
 ##############################################################################
 
-for index, (tool, mode, variant) in enumerate(BAR_ORDER):
+for index, (
+    strategy,
+    variant,
+    folding,
+    tool,
+    mode
+) in enumerate(BAR_ORDER):
 
     shift = BAR_SHIFTS[index]
-    color = COLORS[variant]
+
+    color = COLORS[
+        (strategy, folding)
+    ]
 
     coordinates = []
 
     for size in sizes:
 
-        value = times[(size, tool, mode, variant)]
+        value = times[
+            (
+                size,
+                tool,
+                mode,
+                variant,
+                folding,
+            )
+        ]
 
         coordinates.append(
             "(%s,%s)" %
@@ -302,7 +337,7 @@ for index, (tool, mode, variant) in enumerate(BAR_ORDER):
 
     ######################################################################
     # Second pass:
-    # only the pattern
+    # pattern only
     ######################################################################
 
     if tool == "cypher":
@@ -350,31 +385,31 @@ for index, (tool, mode, variant) in enumerate(BAR_ORDER):
 
 latex.append(r"\end{axis}")
 
+
 ##############################################################################
 # Manual legend
 ##############################################################################
 
-# Parámetros de la leyenda
 legend_y1 = -1.05
 legend_y2 = -1.70
 
 box_w = 0.32
 box_h = 0.22
 
-x1 = 1.0
-x2 = 5.2
-x3 = 9.7
-
 text_dx = 0.15
 
+
 ###########################################################################
-# Primera fila: variantes
+# First row: strategies
 ###########################################################################
 
 for x, colour, label in [
-    (x1, "green", r"\maximevar"),
-    (x2, "red",   r"\katjavar"),
-    (x3, "blue",  r"\rubenvar"),
+
+    (0.8, "green", r"\maximevar"),
+    (3.8, "red", r"\katjavar~(fixed)"),
+    (6.8, "orange", r"\katjavar~(open)"),
+    (10.0, "blue", r"\rubenvar"),
+
 ]:
 
     latex.append(
@@ -395,25 +430,26 @@ for x, colour, label in [
         %
         (
             x + box_w + text_dx,
-            legend_y1 + box_h/2,
+            legend_y1 + box_h / 2,
             label
         )
     )
 
+
 ###########################################################################
-# Segunda fila
+# Second row: execution types
 ###########################################################################
 
-#
 # YARSPG
-#
+
+x = 1.0
 
 latex.append(
     "\\draw[draw=black]"
     "(%.2f,%.2f) rectangle +(%.2f,%.2f);"
     %
     (
-        x1,
+        x,
         legend_y2,
         box_w,
         box_h
@@ -421,24 +457,25 @@ latex.append(
 )
 
 latex.append(
-    "\\node[anchor=west] at (%.2f,%.2f) {YARS-PG};"
+    "\\node[anchor=west] at (%.2f,%.2f) {YARSPG};"
     %
     (
-        x1 + box_w + text_dx,
-        legend_y2 + box_h/2
+        x + box_w + text_dx,
+        legend_y2 + box_h / 2
     )
 )
 
-#
+
 # Cypher normal
-#
+
+x = 4.5
 
 latex.append(
     "\\draw[draw=black]"
     "(%.2f,%.2f) rectangle +(%.2f,%.2f);"
     %
     (
-        x2,
+        x,
         legend_y2,
         box_w,
         box_h
@@ -450,7 +487,7 @@ latex.append(
     "(%.2f,%.2f) rectangle +(%.2f,%.2f);"
     %
     (
-        x2,
+        x,
         legend_y2,
         box_w,
         box_h
@@ -458,24 +495,25 @@ latex.append(
 )
 
 latex.append(
-    "\\node[anchor=west] at (%.2f,%.2f) {Cypher monolithic};"
+    "\\node[anchor=west] at (%.2f,%.2f) {Cypher normal};"
     %
     (
-        x2 + box_w + text_dx,
-        legend_y2 + box_h/2
+        x + box_w + text_dx,
+        legend_y2 + box_h / 2
     )
 )
 
-#
+
 # Cypher large-file
-#
+
+x = 9
 
 latex.append(
     "\\draw[draw=black]"
     "(%.2f,%.2f) rectangle +(%.2f,%.2f);"
     %
     (
-        x3,
+        x,
         legend_y2,
         box_w,
         box_h
@@ -487,7 +525,7 @@ latex.append(
     "(%.2f,%.2f) rectangle +(%.2f,%.2f);"
     %
     (
-        x3,
+        x,
         legend_y2,
         box_w,
         box_h
@@ -495,13 +533,14 @@ latex.append(
 )
 
 latex.append(
-    "\\node[anchor=west] at (%.2f,%.2f) {Cypher batched};"
+    "\\node[anchor=west] at (%.2f,%.2f) {Cypher large-file};"
     %
     (
-        x3 + box_w + text_dx,
-        legend_y2 + box_h/2
+        x + box_w + text_dx,
+        legend_y2 + box_h / 2
     )
 )
+
 
 ##############################################################################
 # Finish figure
