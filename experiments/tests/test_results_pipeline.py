@@ -11,11 +11,9 @@ from experiments import validate_results
 
 
 class OpenFoldingPipelineTests(unittest.TestCase):
-    def test_validator_requires_folding_column(self) -> None:
-        with self.assertRaisesRegex(
-            validate_results.ValidationError, "missing the folding column"
-        ):
-            validate_results.normalize_folding([{"variant": "2"}])
+    def test_validator_maps_variant_2_without_folding_to_fixed(self) -> None:
+        rows = validate_results.normalize_folding([{"variant": "2"}])
+        self.assertEqual(rows[0]["folding"], "fixed")
 
     def test_chart_reader_requires_folding_column(self) -> None:
         with self.assertRaisesRegex(ValueError, "missing the required 'folding' column"):

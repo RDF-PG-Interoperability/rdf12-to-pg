@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate fixed/open result CSVs."""
+"""Validate published fixed-only or fixed/open result CSVs."""
 
 from __future__ import annotations
 
@@ -21,9 +21,15 @@ OPEN_CONVERSION_FORMS = {
     )
     for variant, folding in ((1, ""), (2, "fixed"), (2, "open"), (3, ""))
 }
+FIXED_ONLY_CONVERSION_FORMS = {
+    form for form in OPEN_CONVERSION_FORMS if form[3] != "open"
+}
 OPEN_NEO4J_BATCHED_FORMS = {
     ("large-file", str(variant), folding)
     for variant, folding in ((1, ""), (2, "fixed"), (2, "open"), (3, ""))
+}
+FIXED_ONLY_NEO4J_BATCHED_FORMS = {
+    form for form in OPEN_NEO4J_BATCHED_FORMS if form[2] != "open"
 }
 
 
@@ -51,8 +57,10 @@ def normalize_folding(rows: Iterable[dict[str, str]]) -> list[dict[str, str]]:
     normalized = []
     for row in rows:
         current = dict(row)
-        require("folding" in current, "result CSV is missing the folding column")
-        current["folding"] = current["folding"].strip().lower()
+        folding = current.get("folding", "").strip().lower()
+        current["folding"] = (
+            "fixed" if current.get("variant") == "2" and not folding else folding
+        )
         normalized.append(current)
     return normalized
 
@@ -84,8 +92,11 @@ def validate_conversion(results_dir: Path, label: str) -> None:
     dimensions = ("size", "tool", "mode", "variant", "folding")
     groups = grouped(raw, dimensions)
     actual_forms = {(key[1], key[2], key[3], key[4]) for key in groups}
-    require(actual_forms == OPEN_CONVERSION_FORMS, f"{label}: incomplete fixed/open matrix")
-    expected_groups = len(SIZES) * len(OPEN_CONVERSION_FORMS)
+    require(
+        actual_forms in (FIXED_ONLY_CONVERSION_FORMS, OPEN_CONVERSION_FORMS),
+        f"{label}: expected a complete fixed-only or fixed/open matrix",
+    )
+    expected_groups = len(SIZES) * len(actual_forms)
     expected_rows = expected_groups * 10
     require(len(raw) == expected_rows, f"{label}: expected {expected_rows} raw rows")
     require(len(groups) == expected_groups, f"{label}: expected {expected_groups} groups")
@@ -102,7 +113,8 @@ def validate_conversion(results_dir: Path, label: str) -> None:
     summary_groups = grouped(summary, dimensions)
     require(set(summary_groups) == set(groups), f"{label}: summary groups differ")
     require(all(row["runs"] == "10" for row in summary), f"{label}: wrong summary runs")
-    print(f"{label}: {expected_rows} runs in {expected_groups} fixed/open groups validated")
+    matrix = "fixed/open" if actual_forms == OPEN_CONVERSION_FORMS else "fixed-only"
+    print(f"{label}: {expected_rows} runs in {expected_groups} {matrix} groups validated")
 
 
 def validate_neo4j(results_dir: Path) -> None:
@@ -113,7 +125,10 @@ def validate_neo4j(results_dir: Path) -> None:
     normal_key = ("0.5mb", "normal", "1", "")
     batched = {key for key in groups if key[1] == "large-file"}
     actual_forms = {(key[1], key[2], key[3]) for key in batched}
-    require(actual_forms == OPEN_NEO4J_BATCHED_FORMS, "Neo4j: incomplete fixed/open matrix")
+    require(
+        actual_forms in (FIXED_ONLY_NEO4J_BATCHED_FORMS, OPEN_NEO4J_BATCHED_FORMS),
+        "Neo4j: expected a complete fixed-only or fixed/open matrix",
+    )
     expected_keys = {normal_key} | {
         (size, mode, variant, folding)
         for size in SIZES
@@ -132,7 +147,8 @@ def validate_neo4j(results_dir: Path) -> None:
     summary = normalize_folding(read_rows(results_dir / "neo4j_load_summary.csv"))
     require(len(summary) == expected_groups, f"Neo4j: expected {expected_groups} summaries")
     require(set(grouped(summary, dimensions)) == set(groups), "Neo4j: summary groups differ")
-    print(f"Neo4j: {expected_rows - 1} fixed/open batched loads plus baseline validated")
+    matrix = "fixed/open" if actual_forms == OPEN_NEO4J_BATCHED_FORMS else "fixed-only"
+    print(f"Neo4j: {expected_rows - 1} {matrix} batched loads plus baseline validated")
 
 
 def main() -> int:
