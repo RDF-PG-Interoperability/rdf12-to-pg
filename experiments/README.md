@@ -97,7 +97,9 @@ python3 experiments/validate_results.py
 
 It checks dataset paths and sizes, successful exit codes, configuration counts,
 repetition counts, stable serialized sizes, and agreement between raw and
-summary groups.
+summary groups. During the result refresh, it accepts either the complete
+fixed-only matrix or the complete fixed/open matrix; partial combinations are
+rejected.
 
 ## Generate LaTeX charts
 
