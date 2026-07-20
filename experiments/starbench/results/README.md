@@ -6,8 +6,8 @@ BKR/REF samples used as a StarBench-shaped provenance workload.
 | File | Contents |
 | --- | --- |
 | `datasets.csv` | Reifier count, relative input path, bytes, lines, and parsed graph triples |
-| `conversion_raw.csv` | 450 individual converter runs |
-| `conversion_summary.csv` | 45 conversion configurations aggregated over ten runs |
+| `conversion_raw.csv` | 600 individual converter runs |
+| `conversion_summary.csv` | 60 conversion configurations aggregated over ten runs |
 
 All recorded runs have exit code zero. This workload measures conversion only;
 it does not include Neo4j loading, StarBench query execution, or full-dump
