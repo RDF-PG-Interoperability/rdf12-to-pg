@@ -65,9 +65,9 @@ needs to be rerun to inspect or validate them.
 
 | Workload | Measurements | Repetitions |
 | --- | ---: | --- |
-| Synthetic conversion | 450 | 5 sizes × 9 configurations × 10 runs |
-| BKR/REF conversion | 450 | 5 sizes × 9 configurations × 10 runs |
-| Batched Neo4j loading | 75 | 5 sizes × 3 variants × 5 runs |
+| Synthetic conversion | 600 | 5 sizes × 12 configurations × 10 runs |
+| BKR/REF conversion | 600 | 5 sizes × 12 configurations × 10 runs |
+| Batched Neo4j loading | 100 | 5 sizes × 4 configurations × 5 runs |
 | Monolithic Neo4j baseline | 1 | Maxime, 0.5 MB |
 
 Validate the checked-in datasets and CSV structure without running experiments:
@@ -75,6 +75,9 @@ Validate the checked-in datasets and CSV structure without running experiments:
 ```bash
 python3 experiments/validate_results.py
 ```
+
+Variant 2 fixed and open folding are treated as separate configurations in the
+raw results, summaries, validation, and chart generation.
 
 See [`experiments/README.md`](experiments/README.md) for the measurement scope,
 environment, result-file schema, and full reproduction commands.
