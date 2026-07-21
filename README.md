@@ -1,6 +1,6 @@
 # RDF 1.2 to Property Graph
 
-[![Checks](https://github.com/domel/rdf12-to-pg/actions/workflows/checks.yml/badge.svg)](https://github.com/domel/rdf12-to-pg/actions/workflows/checks.yml)
+[![Checks](https://github.com/RDF-PG-Interoperability/rdf12-to-pg/actions/workflows/checks.yml/badge.svg)](https://github.com/RDF-PG-Interoperability/rdf12-to-pg/actions/workflows/checks.yml)
 
 Research implementations and reproducibility artifacts for translating RDF 1.2
 Turtle into property-graph representations. This repository contains both

@@ -1,560 +1,257 @@
 #!/usr/bin/env python3
+"""Generate standalone PGFPlots charts from conversion summary CSV data."""
 
+from __future__ import annotations
+
+import argparse
 import csv
 import re
-from collections import OrderedDict
+import shutil
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
 
 
+@dataclass(frozen=True)
+class Series:
+    tool: str
+    mode: str
+    variant: int
+    folding: str
+    colour: str
 
 
-##############################################################################
-# Configuration
-##############################################################################
+SERIES = tuple(
+    Series(tool, mode, variant, folding, colour)
+    for variant, folding, colour in (
+        (1, "", "green"),
+        (2, "fixed", "red"),
+        (2, "open", "orange"),
+        (3, "", "blue"),
+    )
+    for tool, mode in (
+        ("yarspg", "normal"),
+        ("cypher", "normal"),
+        ("cypher", "large-file"),
+    )
+)
 
-TARGET_DATA_COLUMN = "time_s_avg"
-Y_AXIS_MIN = 0
-Y_AXIS_MAX = 10
-Y_AXIS_TEXT = "Time (s)"
-HEIGHT = "4.5cm"
-ENLARGE_SEP_VALUE = 0.065
-
-INPUT_CSV = "conversion_summary.csv"
-OUTPUT_TEX = "barchart.tex"
-
-BAR_WIDTH = "5pt"
-
-COLORS = {
-    ("variant1", "fixed"): "green",
-    ("variant2", "fixed"): "red",
-    ("variant2", "open"): "orange",
-    ("variant3", "fixed"): "blue",
+METRICS = {
+    "time": ("time_s_avg", "Time (s)", 1.0),
+    "peak-memory": ("peak_kb_avg", "Peak RSS (MiB)", 1.0 / 1024),
+    "output-size": ("output_bytes_avg", "Output size (MB)", 1.0 / 1_000_000),
 }
 
 
-# Orden EXACTO que has solicitado
-BAR_ORDER = [
-
-    # Variant 1
-    ("variant1", 1, "fixed", "yarspg", "normal"),
-    ("variant1", 1, "fixed", "cypher", "normal"),
-    ("variant1", 1, "fixed", "cypher", "large-file"),
-
-    # Variant 2 - fixed folding
-    ("variant2", 2, "fixed", "yarspg", "normal"),
-    ("variant2", 2, "fixed", "cypher", "normal"),
-    ("variant2", 2, "fixed", "cypher", "large-file"),
-
-    # Variant 2 - open folding
-    ("variant2", 2, "open", "yarspg", "normal"),
-    ("variant2", 2, "open", "cypher", "normal"),
-    ("variant2", 2, "open", "cypher", "large-file"),
-
-    # Variant 3
-    ("variant3", 3, "fixed", "yarspg", "normal"),
-    ("variant3", 3, "fixed", "cypher", "normal"),
-    ("variant3", 3, "fixed", "cypher", "large-file"),
-
-]
-
-# Desplazamiento horizontal de las nueve barras
-BAR_SHIFTS = [
-    "-27.5pt",
-    "-22.5pt",
-    "-17.5pt",
-    "-12.5pt",
-    "-7.5pt",
-    "-2.5pt",
-    "2.5pt",
-    "7.5pt",
-    "12.5pt",
-    "17.5pt",
-    "22.5pt",
-    "27.5pt",
-]
+def numeric_size(raw: str) -> float:
+    match = re.search(r"([0-9.]+)", raw.lower())
+    if match is None:
+        raise ValueError(f"cannot parse dataset size {raw!r}")
+    return float(match.group(1))
 
 
-##############################################################################
-# Utility functions
-##############################################################################
-
-_TARGET_DATA = "tg"
-
-def numeric_size(size_string):
-    """
-    Converts
-
-        0.5mb
-        1mb
-        1.5mb
-        ...
-
-    into
-
-        0.5
-        1.0
-        1.5
-        ...
-    """
-
-    m = re.search(r"([0-9.]+)", size_string.lower())
-
-    if m is None:
-        raise ValueError(f"Cannot parse size '{size_string}'")
-
-    return float(m.group(1))
+def size_label(value: float) -> str:
+    return f"{int(value) if value.is_integer() else value}MB"
 
 
-def canonical_size_label(value):
-    """
-    Converts
-
-        1.0 -> 1MB
-        1.5 -> 1.5MB
-    """
-
-    if value.is_integer():
-        return f"{int(value)}MB"
-
-    return f"{value}MB"
+def normalize_folding(row: dict[str, str]) -> str:
+    if "folding" not in row:
+        raise ValueError("CSV is missing the required 'folding' column")
+    return row["folding"].strip().lower()
 
 
-##############################################################################
-# Read CSV
-##############################################################################
-
-records = []
-
-with open(INPUT_CSV, newline="") as f:
-
-    reader = csv.DictReader(f)
-
-    for row in reader:
-
-        row["tool"] = row["tool"].strip().lower()
-        row["mode"] = row["mode"].strip().lower()
-        row["folding"] = row["folding"].strip().lower()
-
-        row["variant"] = int(row["variant"])
-
-        row["size_numeric"] = numeric_size(row["size"])
-
-        row[_TARGET_DATA] = float(row[TARGET_DATA_COLUMN])
-
-        records.append(row)
+def read_records(path: Path) -> list[dict[str, str | int | float]]:
+    with path.open(newline="", encoding="utf-8") as handle:
+        records: list[dict[str, str | int | float]] = []
+        for source in csv.DictReader(handle):
+            row: dict[str, str | int | float] = dict(source)
+            row["tool"] = source["tool"].strip().lower()
+            row["mode"] = source["mode"].strip().lower()
+            row["variant"] = int(source["variant"])
+            row["folding"] = normalize_folding(source)
+            row["size_numeric"] = numeric_size(source["size"])
+            records.append(row)
+    return records
 
 
-##############################################################################
-# Sort dataset sizes
-##############################################################################
-
-sizes = sorted(
-    {
-        r["size_numeric"]
-        for r in records
-    }
-)
-
-size_labels = [
-    canonical_size_label(s)
-    for s in sizes
-]
-
-
-##############################################################################
-# Build lookup table
-##############################################################################
-
-#
-# Dictionary indexed by
-#
-#   (size, tool, mode, variant)
-#
-# returning
-#
-#   execution time
-#
-
-times = {}
-
-for r in records:
-
-    key = (
-        r["size_numeric"],
-        r["tool"],
-        r["mode"],
-        r["variant"],
-        r["folding"]
-    )
-
-    if key in times:
-        raise ValueError(
-            f"Duplicated row in CSV: {key}"
-        )
-
-    times[key] = r[_TARGET_DATA]
-
-
-##############################################################################
-# Verify completeness
-##############################################################################
-
-missing = []
-
-for size in sizes:
-
-    for _, variant, folding, tool, mode in BAR_ORDER:
-
+def metric_values(
+    records: list[dict[str, str | int | float]],
+    column: str,
+    scale: float,
+) -> tuple[list[float], dict[tuple[float, str, str, int, str], float]]:
+    sizes = sorted({float(row["size_numeric"]) for row in records})
+    values: dict[tuple[float, str, str, int, str], float] = {}
+    for row in records:
         key = (
-            size,
-            tool,
-            mode,
-            variant,
-            folding,
+            float(row["size_numeric"]),
+            str(row["tool"]),
+            str(row["mode"]),
+            int(row["variant"]),
+            str(row["folding"]),
         )
+        if key in values:
+            raise ValueError(f"duplicate CSV row for {key}")
+        values[key] = float(str(row[column])) * scale
 
-        if key not in times:
+    expected = {
+        (size, item.tool, item.mode, item.variant, item.folding)
+        for size in sizes
+        for item in SERIES
+    }
+    missing = sorted(expected - values.keys())
+    extra = sorted(values.keys() - expected)
+    if missing or extra:
+        details = []
+        if missing:
+            details.append(f"missing {len(missing)} combinations, first: {missing[0]}")
+        if extra:
+            details.append(f"unexpected {len(extra)} combinations, first: {extra[0]}")
+        raise ValueError("CSV does not contain the expected open-folding matrix: " + "; ".join(details))
+    return sizes, values
 
-            missing.append(key)
 
-if missing:
+def tex_escape(value: str) -> str:
+    return value.replace("\\", r"\textbackslash{}").replace("_", r"\_")
 
-    print("Missing combinations:\n")
 
-    for m in missing:
-        print(m)
+def pattern_name(series: Series) -> str | None:
+    if series.tool == "yarspg":
+        return None
+    if series.mode == "normal":
+        return "dots"
+    return "north east lines"
 
-    raise RuntimeError(
-        "CSV does not contain all the expected combinations."
-    )
 
-print("CSV successfully loaded.")
-print(f"{len(records)} rows.")
-print()
-
-####################################3
-##############################################################################
-# Start writing PGFPlots
-##############################################################################
-
-latex = []
-
-latex.append(r"\begin{tikzpicture}")
-
-latex.append(
-r"""
-\begin{axis}[
-ybar,
-bar width=%s,
-width=\textwidth,
-height=%s,
-ymin=%s,
-ymax=%s,
-ylabel={%s},
-symbolic x coords={%s},
-xtick=data,
-enlarge x limits=%s,
-legend columns=3,
-legend style={
-at={(0.5,-0.23)},
-anchor=north,
-draw=none
-}]
-""" % (
-    BAR_WIDTH,
-    HEIGHT,
-    Y_AXIS_MIN,
-    Y_AXIS_MAX,
-    Y_AXIS_TEXT,
-",".join(size_labels),
-    ENLARGE_SEP_VALUE
-)
-)
-
-##############################################################################
-# Generate the nine series
-##############################################################################
-
-##############################################################################
-# Generate the nine series
-##############################################################################
-
-for index, (
-    strategy,
-    variant,
-    folding,
-    tool,
-    mode
-) in enumerate(BAR_ORDER):
-
-    shift = BAR_SHIFTS[index]
-
-    color = COLORS[
-        (strategy, folding)
+def render_chart(
+    sizes: list[float],
+    values: dict[tuple[float, str, str, int, str], float],
+    ylabel: str,
+    title: str,
+) -> str:
+    labels = ",".join(size_label(size) for size in sizes)
+    shifts = [(-27.5 + index * 5.0) for index in range(len(SERIES))]
+    lines = [
+        r"\documentclass[tikz,border=5pt]{standalone}",
+        r"\usepackage{pgfplots}",
+        r"\usepgfplotslibrary{fillbetween}",
+        r"\usetikzlibrary{patterns}",
+        r"\pgfplotsset{compat=1.18}",
+        r"\begin{document}",
+        r"\begin{tikzpicture}",
+        r"\begin{axis}[",
+        r"  ybar,",
+        r"  bar width=4.5pt,",
+        r"  width=16cm,",
+        r"  height=8.5cm,",
+        r"  ymin=0,",
+        rf"  ylabel={{{tex_escape(ylabel)}}},",
+        rf"  title={{{tex_escape(title)}}},",
+        rf"  symbolic x coords={{{labels}}},",
+        r"  xtick=data,",
+        r"  enlarge x limits=0.10,",
+        r"  scaled y ticks=false,",
+        r"  tick label style={font=\small},",
+        r"  legend columns=4,",
+        r"  legend style={at={(0.5,-0.20)},anchor=north,draw=none,font=\small},",
+        r"]",
     ]
 
-    coordinates = []
-
-    for size in sizes:
-
-        value = times[
-            (
-                size,
-                tool,
-                mode,
-                variant,
-                folding,
+    for series, shift in zip(SERIES, shifts, strict=True):
+        coordinates = " ".join(
+            f"({size_label(size)},{values[(size, series.tool, series.mode, series.variant, series.folding)]:.6f})"
+            for size in sizes
+        )
+        lines.append(
+            rf"\addplot+[forget plot,draw=black,fill={series.colour},"
+            rf"bar shift={shift:.1f}pt] "
+            rf"coordinates {{{coordinates}}};"
+        )
+        pattern = pattern_name(series)
+        if pattern is not None:
+            lines.append(
+                rf"\addplot+[forget plot,draw=none,fill=none,pattern={pattern},"
+                rf"pattern color=black,bar shift={shift:.1f}pt] "
+                rf"coordinates {{{coordinates}}};"
             )
+
+    lines.extend(
+        [
+            r"\addlegendimage{area legend,draw=black,fill=green}",
+            r"\addlegendentry{Direct}",
+            r"\addlegendimage{area legend,draw=black,fill=red}",
+            r"\addlegendentry{Fold fixed}",
+            r"\addlegendimage{area legend,draw=black,fill=orange}",
+            r"\addlegendentry{Fold open}",
+            r"\addlegendimage{area legend,draw=black,fill=blue}",
+            r"\addlegendentry{Structural}",
+            r"\addlegendimage{area legend,draw=black,fill=white}",
+            r"\addlegendentry{YARS-PG}",
+            r"\addlegendimage{area legend,draw=black,fill=white,pattern=dots,pattern color=black}",
+            r"\addlegendentry{Cypher monolithic}",
+            r"\addlegendimage{area legend,draw=black,fill=white,pattern=north east lines,pattern color=black}",
+            r"\addlegendentry{Cypher batched}",
+            r"\end{axis}",
+            r"\end{tikzpicture}",
+            r"\end{document}",
+            "",
         ]
+    )
+    return "\n".join(lines)
 
-        coordinates.append(
-            "(%s,%s)" %
-            (
-                canonical_size_label(size),
-                value
-            )
+
+def compile_pdf(tex_path: Path) -> Path:
+    executable = shutil.which("pdflatex")
+    if executable is None:
+        raise RuntimeError("pdflatex is required with --compile")
+    result = subprocess.run(
+        [executable, "-interaction=nonstopmode", "-halt-on-error", tex_path.name],
+        cwd=tex_path.parent,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"pdflatex failed for {tex_path}:\n{result.stdout[-4000:]}")
+    for suffix in (".aux", ".log"):
+        auxiliary = tex_path.with_suffix(suffix)
+        if auxiliary.exists():
+            auxiliary.unlink()
+    return tex_path.with_suffix(".pdf")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("input_csv", type=Path)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--title", default="RDF 1.2 to property graph conversion")
+    parser.add_argument(
+        "--metrics",
+        nargs="+",
+        choices=tuple(METRICS),
+        default=tuple(METRICS),
+    )
+    parser.add_argument("--compile", action="store_true", help="also compile PDFs with pdflatex")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    records = read_records(args.input_csv)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    for metric in args.metrics:
+        column, ylabel, scale = METRICS[metric]
+        sizes, values = metric_values(records, column, scale)
+        tex_path = args.output_dir / f"conversion-{metric}.tex"
+        tex_path.write_text(
+            render_chart(sizes, values, ylabel, args.title),
+            encoding="utf-8",
         )
-
-    coordinates_text = "\n".join(coordinates)
-
-    ######################################################################
-    # First pass:
-    # background colour + black border
-    ######################################################################
-
-    latex.append(
-        "\\addplot+["
-        "draw=black,"
-        "fill=%s,"
-        "bar shift=%s"
-        "] coordinates {\n%s\n};"
-        %
-        (
-            color,
-            shift,
-            coordinates_text
-        )
-    )
-
-    ######################################################################
-    # Second pass:
-    # pattern only
-    ######################################################################
-
-    if tool == "cypher":
-
-        if mode == "normal":
-
-            latex.append(
-                "\\addplot+["
-                "draw=none,"
-                "fill=none,"
-                "pattern=dots,"
-                "pattern color=black,"
-                "bar shift=%s"
-                "] coordinates {\n%s\n};"
-                %
-                (
-                    shift,
-                    coordinates_text
-                )
-            )
-
-        elif mode == "large-file":
-
-            latex.append(
-                "\\addplot+["
-                "draw=none,"
-                "fill=none,"
-                "pattern=north east lines,"
-                "pattern color=black,"
-                "bar shift=%s"
-                "] coordinates {\n%s\n};"
-                %
-                (
-                    shift,
-                    coordinates_text
-                )
-            )
-
-##############################################################################
-# Legend
-##############################################################################
-##############################################################################
-# Close axis
-##############################################################################
-
-latex.append(r"\end{axis}")
+        print(f"Written: {tex_path}")
+        if args.compile:
+            print(f"Written: {compile_pdf(tex_path)}")
+    return 0
 
 
-##############################################################################
-# Manual legend
-##############################################################################
-
-legend_y1 = -1.05
-legend_y2 = -1.70
-
-box_w = 0.32
-box_h = 0.22
-
-text_dx = 0.15
-
-
-###########################################################################
-# First row: strategies
-###########################################################################
-
-for x, colour, label in [
-
-    (0.8, "green", r"\maximevar"),
-    (3.8, "red", r"\katjavar~(fixed)"),
-    (6.8, "orange", r"\katjavar~(open)"),
-    (10.0, "blue", r"\rubenvar"),
-
-]:
-
-    latex.append(
-        "\\draw[draw=black,fill=%s] "
-        "(%.2f,%.2f) rectangle +(%.2f,%.2f);"
-        %
-        (
-            colour,
-            x,
-            legend_y1,
-            box_w,
-            box_h
-        )
-    )
-
-    latex.append(
-        "\\node[anchor=west] at (%.2f,%.2f) {%s};"
-        %
-        (
-            x + box_w + text_dx,
-            legend_y1 + box_h / 2,
-            label
-        )
-    )
-
-
-###########################################################################
-# Second row: execution types
-###########################################################################
-
-# YARSPG
-
-x = 1.0
-
-latex.append(
-    "\\draw[draw=black]"
-    "(%.2f,%.2f) rectangle +(%.2f,%.2f);"
-    %
-    (
-        x,
-        legend_y2,
-        box_w,
-        box_h
-    )
-)
-
-latex.append(
-    "\\node[anchor=west] at (%.2f,%.2f) {YARSPG};"
-    %
-    (
-        x + box_w + text_dx,
-        legend_y2 + box_h / 2
-    )
-)
-
-
-# Cypher normal
-
-x = 4.5
-
-latex.append(
-    "\\draw[draw=black]"
-    "(%.2f,%.2f) rectangle +(%.2f,%.2f);"
-    %
-    (
-        x,
-        legend_y2,
-        box_w,
-        box_h
-    )
-)
-
-latex.append(
-    "\\fill[pattern=dots,pattern color=black]"
-    "(%.2f,%.2f) rectangle +(%.2f,%.2f);"
-    %
-    (
-        x,
-        legend_y2,
-        box_w,
-        box_h
-    )
-)
-
-latex.append(
-    "\\node[anchor=west] at (%.2f,%.2f) {Cypher normal};"
-    %
-    (
-        x + box_w + text_dx,
-        legend_y2 + box_h / 2
-    )
-)
-
-
-# Cypher large-file
-
-x = 9
-
-latex.append(
-    "\\draw[draw=black]"
-    "(%.2f,%.2f) rectangle +(%.2f,%.2f);"
-    %
-    (
-        x,
-        legend_y2,
-        box_w,
-        box_h
-    )
-)
-
-latex.append(
-    "\\fill[pattern=north east lines,pattern color=black]"
-    "(%.2f,%.2f) rectangle +(%.2f,%.2f);"
-    %
-    (
-        x,
-        legend_y2,
-        box_w,
-        box_h
-    )
-)
-
-latex.append(
-    "\\node[anchor=west] at (%.2f,%.2f) {Cypher large-file};"
-    %
-    (
-        x + box_w + text_dx,
-        legend_y2 + box_h / 2
-    )
-)
-
-
-##############################################################################
-# Finish figure
-##############################################################################
-
-latex.append(r"\end{tikzpicture}")
-##############################################################################
-# Write output file
-##############################################################################
-
-with open(OUTPUT_TEX, "w", encoding="utf8") as f:
-
-    f.write("\n".join(latex))
-
-print()
-print(f"Written: {OUTPUT_TEX}")
-print()
+if __name__ == "__main__":
+    raise SystemExit(main())
