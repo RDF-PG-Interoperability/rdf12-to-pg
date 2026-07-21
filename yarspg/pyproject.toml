@@ -15,7 +15,7 @@ authors = [
 dependencies = []
 
 [project.urls]
-Repository = "https://github.com/domel/rdf12-to-pg"
+Repository = "https://github.com/RDF-PG-Interoperability/rdf12-to-pg"
 
 [project.optional-dependencies]
 dev = [
