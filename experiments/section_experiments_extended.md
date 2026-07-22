@@ -18,7 +18,7 @@ The benchmark implementations retain blank nodes as distinct `BNode`-labeled nod
 
 ## Synthetic datasets
 
-This repository contains an ad-hoc RDF genrator. The generator's *`all`* profile combines 15 feature families: ordinary RDF triples, predicate--object lists, typed and directional literals, blank nodes, collections, explicit *`rdf:reifies`* triples, asserted and reified propositions, standalone and nested triple terms, multiple reifiers, a reifier of multiple propositions, annotation blocks, IRI references, and mixed RDF 1.2 syntax. This is a stress workload rather than a common-domain correctness test. In particular, standalone and nested triple terms fall outside the input restrictions of *DIRECT* and *FOLD* variants, and their implementations omit graph triples whose objects are such terms unless the predicate is `rdf:reifies`. Successful execution on this profile therefore demonstrates operational robustness, not information preservation outside the translations' stated domains.
+This repository contains an ad-hoc RDF genrator (see [synthetic_generator](https://github.com/RDF-PG-Interoperability/rdf12-to-pg/tree/main/synthetic-generator)). The generator's *`all`* profile combines 15 feature families: ordinary RDF triples, predicate--object lists, typed and directional literals, blank nodes, collections, explicit *`rdf:reifies`* triples, asserted and reified propositions, standalone and nested triple terms, multiple reifiers, a reifier of multiple propositions, annotation blocks, IRI references, and mixed RDF 1.2 syntax. This is a stress workload rather than a common-domain correctness test. In particular, standalone and nested triple terms fall outside the input restrictions of *DIRECT* and *FOLD* variants, and their implementations omit graph triples whose objects are such terms unless the predicate is `rdf:reifies`. Successful execution on this profile therefore demonstrates operational robustness, not information preservation outside the translations' stated domains.
 
 ### Datasets
 
@@ -40,7 +40,7 @@ On this workload, *FOLD* produced the smallest output in both formats. At 2.5 MB
 
 The batched Cypher mode increased generation time and output size in exchange for smaller statements and indexed endpoint lookups during loading. At 2.5 MB, mean batched-generation times were 8.82 s for *DIRECT*, 2.343/2.313 s for fixed/open *FOLD*, and 7.48 s for *STRUCTURAL*, versus 1.87--1.93 s for monolithic Cypher. At the same input size, batched conversion used 54.8--85.7 MiB of peak RSS, compared with 147.4--168.6 MiB for monolithic conversion. The timing trends, RSS, and putput size of the experiments with thsi dataset are shonw in the folowing figure:
 
-PLACEHOLDER, ARTIFICAIL DATASET GOES HERE
+![Data for the synthetic dataset](figures/synthetic_dataset_numbers.PNG)
 
 
 ### Neo4j loading results
@@ -93,7 +93,7 @@ The output-size ordering differs from the synthetic workload. BKR records associ
 
 At 2.5 MB, batched Cypher generation took 4.437 s for *DIRECT*, 1.317/1.240 s for fixed/open *FOLD*, and 3.510 s for *STRUCTURAL*. The low observed time for *FOLD* is consistent with its implementation avoiding the disk-backed indexes used by the other two translations. Batched conversion used approximately 50 MiB of peak RSS for *DIRECT* and *STRUCTURAL*, down from 134 MiB and 124 MiB in monolithic mode; *FOLD* used approximately 68/99 MiB in fixed/open batched mode and 142/101 MiB in fixed/open monolithic mode. These are observations over the tested range, not asymptotic memory bounds. The timing, RSS, and output size trends can be seen in the following figure:
 
-INCLUDE FIGURE HERE
+![Data for the synthetic dataset](figures/bkr_dataset_numbers.PNG)
 
 Across both workloads, monolithic conversion time grew approximately with the number of parsed graph triples over the limited range tested. Batched Cypher reduced converter RSS but increased generation time and file size; in the synthetic experiment it also substantially reduced the one directly comparable Neo4j loading time. Open folding was slightly smaller on the mixed synthetic input and substantially reduced the high-cardinality BKR provenance records relative to fixed folding. These findings concern the released implementations and workload shapes; because the translations preserve different information, they do not establish a semantic ranking.
 
