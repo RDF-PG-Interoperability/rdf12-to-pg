@@ -4,6 +4,9 @@ This directory contains the complete measurement harness, evaluated input
 samples, and canonical CSV results for the synthetic and BKR/REF workloads.
 Measurement reports are written exclusively as CSV files.
 
+In this README, you will find dataset and experimental methodology descriptions, as well as intructions for reproducibility. 
+In the document [section_experiments_extended.md](https://github.com/RDF-PG-Interoperability/rdf12-to-pg/blob/main/experiments/section_experiments_extended.md), you can read an analysis and description of the whole experimental process and the obtained results. Such document is an extended version of the *experiments* section of the manuscript associated to this repository. 
+
 ## Contents
 
 | Path | Purpose |
@@ -16,6 +19,7 @@ Measurement reports are written exclusively as CSV files.
 | `results/` | Synthetic conversion and Neo4j raw/summary CSVs |
 | `starbench/data/` | Five migrated BKR/REF Turtle samples |
 | `starbench/results/` | BKR/REF conversion raw/summary CSVs |
+| `section_experiments_extended.md` | Extended version of the manuscript's experiments |
 
 Downloaded Neo4j files, the full BKR dump, generated Cypher/YARS-PG, logs, and
 temporary files are intentionally ignored by Git.
